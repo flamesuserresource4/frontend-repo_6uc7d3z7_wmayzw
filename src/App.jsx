@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import HeroSection from './components/HeroSection';
-import MediaControls from './components/MediaControls';
-import SystemStats from './components/SystemStats';
-import AppLaunchers from './components/AppLaunchers';
+import Navbar from './components/Navbar';
+import MusicPage from './components/MusicPage';
+import StatsPage from './components/StatsPage';
+import LaunchersPage from './components/LaunchersPage';
 
 function deriveWsUrl() {
   const envUrl = import.meta.env.VITE_WS_URL;
@@ -12,6 +12,7 @@ function deriveWsUrl() {
 }
 
 export default function App() {
+  const [page, setPage] = useState('music');
   const [connected, setConnected] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [volume, setVolume] = useState(50);
@@ -21,6 +22,22 @@ export default function App() {
   const wsRef = useRef(null);
 
   const wsUrl = useMemo(() => deriveWsUrl(), []);
+
+  // Initialize hash-based navigation
+  useEffect(() => {
+    const init = () => {
+      const hash = window.location.hash.replace('#', '');
+      if (hash === 'music' || hash === 'stats' || hash === 'apps') setPage(hash);
+    };
+    init();
+    const onHash = () => init();
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+
+  useEffect(() => {
+    if (page) window.location.hash = page;
+  }, [page]);
 
   // Demo playlist for immediate UI
   useEffect(() => {
@@ -42,7 +59,6 @@ export default function App() {
 
       ws.addEventListener('open', () => {
         setConnected(true);
-        // Request initial state
         ws.send(JSON.stringify({ type: 'hello', client: 'dashboard' }));
         ws.send(JSON.stringify({ type: 'get_state' }));
         ws.send(JSON.stringify({ type: 'get_stats' }));
@@ -59,11 +75,9 @@ export default function App() {
           } else if (msg.type === 'stats') {
             setStats(msg.payload || {});
           } else if (msg.type === 'media') {
-            // media event feedback
             if (msg.action === 'play') setPlaying(true);
             if (msg.action === 'pause') setPlaying(false);
-            if (msg.action === 'next' && msg.currentTrack) setCurrentTrack(msg.currentTrack);
-            if (msg.action === 'prev' && msg.currentTrack) setCurrentTrack(msg.currentTrack);
+            if ((msg.action === 'next' || msg.action === 'prev') && msg.currentTrack) setCurrentTrack(msg.currentTrack);
             if (msg.action === 'volume' && typeof msg.volume === 'number') setVolume(msg.volume);
           }
         } catch (e) {
@@ -120,7 +134,7 @@ export default function App() {
 
   const handlePlayPause = () => {
     const action = playing ? 'pause' : 'play';
-    setPlaying(!playing); // immediate feedback
+    setPlaying(!playing);
     send({ type: 'media', action });
   };
 
@@ -155,49 +169,44 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-black via-zinc-950 to-black text-white">
-      <div className="max-w-6xl mx-auto px-4 py-6 md:py-10 space-y-6 md:space-y-8">
-        <HeroSection connected={connected} currentTrack={currentTrack} />
+      <div className="max-w-6xl mx-auto px-4 py-6 md:py-8 space-y-6 md:space-y-8">
+        <Navbar page={page} onNavigate={setPage} />
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
-          <div className="lg:col-span-2 space-y-4 md:space-y-6">
-            <MediaControls
-              playing={playing}
-              volume={volume}
-              onPlayPause={handlePlayPause}
-              onPrev={handlePrev}
-              onNext={handleNext}
-              onVolume={handleVolume}
-              playlist={playlist}
-              currentTrack={currentTrack}
-              onSelectTrack={handleSelectTrack}
-            />
+        {page === 'music' && (
+          <MusicPage
+            connected={connected}
+            currentTrack={currentTrack}
+            playing={playing}
+            volume={volume}
+            onPlayPause={handlePlayPause}
+            onPrev={handlePrev}
+            onNext={handleNext}
+            onVolume={handleVolume}
+            playlist={playlist}
+            onSelectTrack={handleSelectTrack}
+          />
+        )}
 
-            <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 md:p-5">
-              <h3 className="text-sm text-zinc-400 mb-3">System Overview</h3>
-              <SystemStats stats={stats} />
+        {page === 'stats' && (
+          <StatsPage stats={stats} />
+        )}
+
+        {page === 'apps' && (
+          <LaunchersPage onLaunch={handleLaunch} />
+        )}
+
+        <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 md:p-5">
+          <h3 className="text-sm text-zinc-400 mb-2">Connection</h3>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <span className={`h-2.5 w-2.5 rounded-full ${connected ? 'bg-emerald-400' : 'bg-yellow-400'}`} />
+              <span className="text-sm text-zinc-300">{connected ? 'Connected to host' : 'Attempting to connect...'}</span>
             </div>
+            <code className="text-xs text-zinc-500 bg-black/40 border border-zinc-800 rounded px-2 py-1">{wsUrl}</code>
           </div>
-
-          <div className="space-y-4 md:space-y-6">
-            <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 md:p-5">
-              <h3 className="text-sm text-zinc-400 mb-3">Launch Apps</h3>
-              <AppLaunchers onLaunch={handleLaunch} />
-            </div>
-
-            <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 md:p-5">
-              <h3 className="text-sm text-zinc-400 mb-2">Connection</h3>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className={`h-2.5 w-2.5 rounded-full ${connected ? 'bg-emerald-400' : 'bg-yellow-400'}`} />
-                  <span className="text-sm text-zinc-300">{connected ? 'Connected to host' : 'Attempting to connect...'}</span>
-                </div>
-                <code className="text-xs text-zinc-500 bg-black/40 border border-zinc-800 rounded px-2 py-1">{wsUrl}</code>
-              </div>
-              <p className="text-xs text-zinc-500 mt-3">
-                Example realtime messages are exchanged via WebSocket. Try the controls to see instant feedback.
-              </p>
-            </div>
-          </div>
+          <p className="text-xs text-zinc-500 mt-3">
+            Realtime messages are exchanged via WebSocket. Use the tabs above to control media, view stats, or launch apps.
+          </p>
         </div>
       </div>
     </div>
